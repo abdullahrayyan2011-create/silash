@@ -1,0 +1,25 @@
+{
+  "name": "whatsapp-clone",
+  "version": "1.0.0",
+  "description": "تطبيق مراسلة فورية شبيه بواتساب - تسجيل دخول بالإيميل مع تحقق برمز",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.14",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

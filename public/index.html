@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>تطبيق المراسلة</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ============ شاشة التسجيل ============ -->
+  <section id="view-register" class="auth-view">
+    <div class="auth-card">
+      <h1 class="brand">مراسلة</h1>
+      <p class="subtitle">أنشئ حساب جديد للبدء</p>
+
+      <form id="form-register">
+        <input type="text" id="register-name" placeholder="الاسم" required />
+        <input type="email" id="register-email" placeholder="البريد الإلكتروني" required />
+        <input type="password" id="register-password" placeholder="كلمة السر (6 أحرف على الأقل)" required />
+        <button type="submit">إنشاء حساب</button>
+      </form>
+
+      <p class="error-msg" id="register-error"></p>
+
+      <p class="switch-link">
+        عندك حساب؟ <a href="#" data-goto="view-login">سجّل دخول</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ شاشة التحقق من الإيميل ============ -->
+  <section id="view-verify" class="auth-view hidden">
+    <div class="auth-card">
+      <h1 class="brand">تحقق من إيميلك</h1>
+      <p class="subtitle">أرسلنا رمز مكوّن من 6 أرقام إلى <span id="verify-email-label"></span></p>
+
+      <form id="form-verify">
+        <input type="text" id="verify-code" placeholder="رمز التحقق" maxlength="6" required />
+        <button type="submit">تفعيل الحساب</button>
+      </form>
+
+      <p class="error-msg" id="verify-error"></p>
+      <p class="success-msg" id="verify-success"></p>
+
+      <p class="switch-link">
+        ما وصلك الرمز؟ <a href="#" id="resend-code-btn">أعد الإرسال</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ شاشة تسجيل الدخول ============ -->
+  <section id="view-login" class="auth-view hidden">
+    <div class="auth-card">
+      <h1 class="brand">مراسلة</h1>
+      <p class="subtitle">سجّل دخولك لمتابعة محادثاتك</p>
+
+      <form id="form-login">
+        <input type="email" id="login-email" placeholder="البريد الإلكتروني" required />
+        <input type="password" id="login-password" placeholder="كلمة السر" required />
+        <button type="submit">تسجيل الدخول</button>
+      </form>
+
+      <p class="error-msg" id="login-error"></p>
+
+      <p class="switch-link">
+        حساب جديد؟ <a href="#" data-goto="view-register">أنشئ حساب</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ شاشة الشات الرئيسية ============ -->
+  <section id="view-chat" class="chat-view hidden">
+    <!-- الشريط الجانبي: قائمة المستخدمين -->
+    <aside class="sidebar">
+      <header class="sidebar-header">
+        <span id="current-user-name" class="current-user"></span>
+        <button id="logout-btn" title="تسجيل خروج">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9Z"/></svg>
+        </button>
+      </header>
+      <div class="contacts-list" id="contacts-list">
+        <!-- تُملأ ديناميكياً عبر app.js -->
+      </div>
+    </aside>
+
+    <!-- منطقة المحادثة -->
+    <main class="chat-main">
+      <div id="chat-placeholder" class="chat-placeholder">
+        <p>اختر جهة اتصال لبدء المحادثة</p>
+      </div>
+
+      <div id="chat-active" class="chat-active hidden">
+        <header class="chat-header">
+          <span id="chat-with-name"></span>
+          <span id="chat-with-status" class="status-dot"></span>
+        </header>
+
+        <div class="messages-area" id="messages-area">
+          <!-- تُملأ ديناميكياً عبر app.js -->
+        </div>
+
+        <form id="form-send-message" class="message-input-bar">
+          <input type="text" id="message-input" placeholder="اكتب رسالة..." autocomplete="off" />
+          <button type="submit">إرسال</button>
+        </form>
+      </div>
+    </main>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

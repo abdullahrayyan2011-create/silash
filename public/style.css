@@ -42,6 +42,12 @@ button {
   text-align: center;
 }
 
+.brand-logo {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+}
+
 .brand {
   font-size: 28px;
   color: #075E54;

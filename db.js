@@ -29,9 +29,16 @@ db.exec(`
     is_verified INTEGER NOT NULL DEFAULT 0,
     verification_code TEXT,
     code_expires_at INTEGER,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    plan TEXT NOT NULL DEFAULT 'free',
+    premium_until INTEGER
   )
 `);
+
+
+// ترقية قواعد البيانات القديمة بدون حذف بيانات المستخدمين
+try { db.exec("ALTER TABLE users ADD COLUMN plan TEXT NOT NULL DEFAULT 'free'"); } catch (e) {}
+try { db.exec('ALTER TABLE users ADD COLUMN premium_until INTEGER'); } catch (e) {}
 
 // ============ جدول الرسائل ============
 // id: رقم فريد لكل رسالة
@@ -46,10 +53,24 @@ db.exec(`
     receiver_id INTEGER NOT NULL,
     content TEXT NOT NULL,
     created_at INTEGER NOT NULL,
+    message_type TEXT NOT NULL DEFAULT 'text',
+    file_name TEXT,
+    file_url TEXT,
+    file_size INTEGER,
+    file_mime TEXT,
+    reaction TEXT,
     FOREIGN KEY (sender_id) REFERENCES users(id),
     FOREIGN KEY (receiver_id) REFERENCES users(id)
   )
 `);
+
+// ترقية جدول الرسائل القديمة بدون حذف الرسائل الموجودة
+try { db.exec("ALTER TABLE messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'text'"); } catch (e) {}
+try { db.exec('ALTER TABLE messages ADD COLUMN file_name TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE messages ADD COLUMN file_url TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE messages ADD COLUMN file_size INTEGER'); } catch (e) {}
+try { db.exec('ALTER TABLE messages ADD COLUMN file_mime TEXT'); } catch (e) {}
+try { db.exec('ALTER TABLE messages ADD COLUMN reaction TEXT'); } catch (e) {}
 
 // نصدّر الاتصال بقاعدة البيانات عشان نستخدمه بملفات ثانية (server.js)
 module.exports = db;

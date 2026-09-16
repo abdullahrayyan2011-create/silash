@@ -9,6 +9,8 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
 const db = require('./db');
 
 const app = express();
@@ -19,7 +21,10 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-غيرني';
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '35mb' }));
+const uploadsDir = path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
 app.use(express.static('public')); // بيقدّم ملفات مجلد public تلقائياً (index.html, style.css, app.js)
 
 // ============================================================
@@ -46,6 +51,15 @@ process.on('unhandledRejection', (err) => {
 
 // دالة بسيطة بترسل رمز التحقق للإيميل
 async function sendVerificationEmail(toEmail, code) {
+  // Local development: if SMTP is not configured, don't crash the app.
+  // The verification code is printed in the terminal instead.
+  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.log('========================================');
+    console.log(`DEV verification code for ${toEmail}: ${code}`);
+    console.log('========================================');
+    return;
+  }
+
   await transporter.sendMail({
     from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
     to: toEmail,
@@ -66,10 +80,19 @@ function generateCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
+function currentUserIsPremium(userId) {
+  const user = db.prepare('SELECT plan, premium_until FROM users WHERE id = ?').get(userId);
+  return isPremium(user);
+}
+
 // ============================================================
 // Middleware للتحقق من تسجيل الدخول (JWT)
 // أي مسار بيحتاج المستخدم يكون مسجّل دخول بيمرّ من هون أول
 // ============================================================
+function isPremium(user) {
+  return user && user.plan === 'premium' && (!user.premium_until || user.premium_until > Date.now());
+}
+
 function authMiddleware(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
@@ -185,10 +208,9 @@ app.post('/api/login', async (req, res) => {
   if (!user) {
     return res.status(400).json({ error: 'الإيميل أو كلمة السر غير صحيحة' });
   }
-  if (!user.is_verified) {
-    return res.status(403).json({ error: 'يجب تفعيل حسابك أولاً عبر الرمز المرسل لإيميلك', needsVerification: true });
-  }
-
+  // تسجيل الدخول لا يحتاج رمز تحقق.
+  // رمز التحقق يُرسل فقط عند إنشاء حساب جديد، ويمكن للمستخدم تسجيل الدخول
+  // بعد ذلك بالإيميل وكلمة السر مباشرة.
   const isMatch = await bcrypt.compare(password, user.password_hash);
   if (!isMatch) {
     return res.status(400).json({ error: 'الإيميل أو كلمة السر غير صحيحة' });
@@ -198,15 +220,75 @@ app.post('/api/login', async (req, res) => {
 
   res.json({
     token,
-    user: { id: user.id, name: user.name, email: user.email },
+    user: { id: user.id, name: user.name, email: user.email, plan: user.plan || 'free', premiumUntil: user.premium_until || null },
   });
 });
 
 // ============================================================
-// 5) قائمة كل المستخدمين (عشان تختار مين تحكي معه)
+// 5) بيانات المستخدم الحالي وحالة Premium
+// ============================================================
+app.get('/api/me', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT id, name, email, plan, premium_until, created_at FROM users WHERE id = ?').get(req.userId);
+  if (!user) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  res.json({
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      plan: isPremium(user) ? 'premium' : 'free',
+      premiumUntil: user.premium_until || null,
+      createdAt: user.created_at
+    }
+  });
+});
+
+// للاختبار فقط: يمنح حسابك Premium بكود موجود في .env.
+// لاحقاً نستبدله ببوابة دفع حقيقية.
+app.post('/api/premium/test-activate', authMiddleware, (req, res) => {
+  const { code } = req.body || {};
+  const adminCode = process.env.PREMIUM_TEST_CODE || 'SILASH2026';
+  if (!adminCode || code !== adminCode) {
+    return res.status(403).json({ error: 'رمز التفعيل غير صحيح' });
+  }
+  const until = Date.now() + 30 * 24 * 60 * 60 * 1000;
+  db.prepare("UPDATE users SET plan = 'premium', premium_until = ? WHERE id = ?").run(until, req.userId);
+  res.json({ message: 'تم تفعيل Premium لمدة 30 يوم', premiumUntil: until });
+});
+
+// رفع الملفات: Premium حتى 25MB، والحساب المجاني حتى 5MB.
+app.post('/api/upload', authMiddleware, (req, res) => {
+  try {
+    const { name, mime, size, data } = req.body || {};
+    if (!name || !mime || !data) return res.status(400).json({ error: 'لم يتم اختيار ملف' });
+
+    const premium = currentUserIsPremium(req.userId);
+    const maxSize = premium ? 25 * 1024 * 1024 : 5 * 1024 * 1024;
+    const declaredSize = Number(size) || 0;
+    if (declaredSize > maxSize) {
+      return res.status(400).json({ error: premium ? 'حجم الملف أكبر من 25MB' : 'الحساب المجاني يسمح بملفات حتى 5MB. فعّل Premium لرفع ملفات أكبر.' });
+    }
+
+    const cleanName = path.basename(String(name)).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'file';
+    const base64 = String(data).replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(base64, 'base64');
+    if (!buffer.length || buffer.length > maxSize) {
+      return res.status(400).json({ error: premium ? 'حجم الملف أكبر من 25MB' : 'الحساب المجاني يسمح بملفات حتى 5MB. فعّل Premium لرفع ملفات أكبر.' });
+    }
+
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${cleanName}`;
+    fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+    res.json({ url: `/uploads/${encodeURIComponent(filename)}`, name: String(name), size: buffer.length, mime: String(mime) });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(400).json({ error: 'تعذر رفع الملف' });
+  }
+});
+
+// ============================================================
+// 6) قائمة كل المستخدمين (عشان تختار مين تحكي معه)
 // ============================================================
 app.get('/api/users', authMiddleware, (req, res) => {
-  const users = db.prepare('SELECT id, name, email FROM users WHERE id != ? AND is_verified = 1')
+  const users = db.prepare('SELECT id, name, email, plan, premium_until FROM users WHERE id != ? AND is_verified = 1')
     .all(req.userId);
   res.json({ users });
 });
@@ -225,6 +307,22 @@ app.get('/api/messages/:otherUserId', authMiddleware, (req, res) => {
   `).all(req.userId, otherUserId, otherUserId, req.userId);
 
   res.json({ messages });
+});
+
+// Premium: تفاعل بسيط على الرسائل (❤️ 👍 😂).
+app.post('/api/messages/:messageId/react', authMiddleware, (req, res) => {
+  if (!currentUserIsPremium(req.userId)) {
+    return res.status(403).json({ error: 'التفاعلات متاحة لمستخدمي Premium فقط' });
+  }
+  const messageId = Number(req.params.messageId);
+  const reaction = req.body?.reaction || null;
+  if (reaction && !['❤️', '👍', '😂', '🔥', '😮'].includes(reaction)) {
+    return res.status(400).json({ error: 'تفاعل غير مدعوم' });
+  }
+  const message = db.prepare('SELECT * FROM messages WHERE id = ? AND (sender_id = ? OR receiver_id = ?)').get(messageId, req.userId, req.userId);
+  if (!message) return res.status(404).json({ error: 'الرسالة غير موجودة' });
+  db.prepare('UPDATE messages SET reaction = ? WHERE id = ?').run(reaction, messageId);
+  res.json({ messageId, reaction });
 });
 
 // ============================================================
@@ -257,22 +355,36 @@ io.on('connection', (socket) => {
   io.emit('user-status', { userId: socket.userId, online: true });
 
   // استقبال رسالة جديدة من المستخدم وإرسالها للطرف الثاني
-  socket.on('send-message', ({ receiverId, content }) => {
-    if (!content || !content.trim()) return;
+  socket.on('send-message', ({ receiverId, content, attachment }) => {
+    const text = typeof content === 'string' ? content.trim() : '';
+    const hasAttachment = attachment && attachment.url && attachment.name;
+    if (!text && !hasAttachment) return;
 
     const createdAt = Date.now();
-
+    const type = hasAttachment ? 'file' : 'text';
     const result = db.prepare(`
-      INSERT INTO messages (sender_id, receiver_id, content, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(socket.userId, receiverId, content.trim(), createdAt);
+      INSERT INTO messages (sender_id, receiver_id, content, created_at, message_type, file_name, file_url, file_size, file_mime)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      socket.userId, receiverId, text, createdAt, type,
+      hasAttachment ? attachment.name : null,
+      hasAttachment ? attachment.url : null,
+      hasAttachment ? Number(attachment.size) || 0 : null,
+      hasAttachment ? attachment.mime || null : null
+    );
 
     const message = {
       id: result.lastInsertRowid,
       sender_id: socket.userId,
       receiver_id: receiverId,
-      content: content.trim(),
+      content: text,
       created_at: createdAt,
+      message_type: type,
+      file_name: hasAttachment ? attachment.name : null,
+      file_url: hasAttachment ? attachment.url : null,
+      file_size: hasAttachment ? Number(attachment.size) || 0 : null,
+      file_mime: hasAttachment ? attachment.mime || null : null,
+      reaction: null
     };
 
     // إرسال الرسالة للطرف الثاني إذا كان متصل الآن

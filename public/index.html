@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Silash</title>
-  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <title>Silash — منصة المحادثة</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,7 +11,6 @@
   <!-- ============ شاشة التسجيل ============ -->
   <section id="view-register" class="auth-view">
     <div class="auth-card">
-      <img src="logo.svg" alt="Silash" class="brand-logo" />
       <h1 class="brand">Silash</h1>
       <p class="subtitle">أنشئ حساب جديد للبدء</p>
 
@@ -54,7 +52,6 @@
   <!-- ============ شاشة تسجيل الدخول ============ -->
   <section id="view-login" class="auth-view hidden">
     <div class="auth-card">
-      <img src="logo.svg" alt="Silash" class="brand-logo" />
       <h1 class="brand">Silash</h1>
       <p class="subtitle">سجّل دخولك لمتابعة محادثاتك</p>
 
@@ -77,11 +74,18 @@
     <!-- الشريط الجانبي: قائمة المستخدمين -->
     <aside class="sidebar">
       <header class="sidebar-header">
-        <span id="current-user-name" class="current-user"></span>
-        <button id="logout-btn" title="تسجيل خروج">
+        <div class="user-head">
+          <span id="current-user-name" class="current-user"></span>
+          <span id="current-user-plan" class="plan-badge">FREE</span>
+        </div>
+        <div class="header-actions">
+          <button id="premium-btn" class="premium-btn" title="Silash Premium">⭐ Premium</button>
+          <button id="logout-btn" title="تسجيل خروج">
           <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M16 17v-3H9v-4h7V7l5 5-5 5M14 2a2 2 0 0 1 2 2v2h-2V4H5v16h9v-2h2v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9Z"/></svg>
         </button>
+        </div>
       </header>
+      <div id="free-ad" class="free-ad">📢 مساحة إعلانية مجانية — Premium بدون إعلانات</div>
       <div class="contacts-list" id="contacts-list">
         <!-- تُملأ ديناميكياً عبر app.js -->
       </div>
@@ -104,12 +108,50 @@
         </div>
 
         <form id="form-send-message" class="message-input-bar">
+          <input type="file" id="file-input" hidden />
+          <label id="file-label" class="file-label" for="file-input" title="إرفاق ملف">📎</label>
           <input type="text" id="message-input" placeholder="اكتب رسالة..." autocomplete="off" />
-          <button type="submit">إرسال</button>
+          <button id="send-message-btn" type="submit">إرسال</button>
         </form>
       </div>
     </main>
   </section>
+
+
+  <div id="premium-modal" class="premium-modal hidden">
+    <div class="premium-card">
+      <button id="close-premium" class="close-premium" aria-label="إغلاق">×</button>
+      <div class="premium-icon">⭐</div>
+      <h2>Silash Premium</h2>
+      <p>ميزات إضافية لمستخدمي Silash المميزين.</p>
+      <div class="premium-features">
+        <div>⭐ شارة Premium بجانب اسمك</div>
+        <div>🎨 تخصيصات وميزات حصرية</div>
+        <div>🚫 بدون إعلانات عند إطلاقها</div>
+        <div>✨ وصول مبكر للميزات الجديدة</div>
+      </div>
+      <div class="premium-price"><strong>$2.99</strong><span>/ شهر</span></div>
+      <button id="activate-premium-btn" class="premium-cta">تفعيل Premium</button>
+      <p id="premium-message" class="premium-message"></p>
+      <p id="premium-status" class="premium-status">حسابك حالياً مجاني</p>
+
+      <div class="premium-section">
+        <h3>🎨 ثيمات Premium</h3>
+        <div class="theme-grid">
+          <button type="button" class="theme-choice" data-theme="classic">كلاسيك</button>
+          <button type="button" class="theme-choice" data-theme="midnight">Midnight</button>
+          <button type="button" class="theme-choice" data-theme="ocean">Ocean</button>
+          <button type="button" class="theme-choice" data-theme="violet">Violet</button>
+        </div>
+      </div>
+
+      <div class="premium-section early-access">
+        <h3>✨ Premium Lab</h3>
+        <p>تجربة ميزات جديدة مبكراً، ومنها تفاعلات الرسائل.</p>
+      </div>
+      <small>الدفع الحقيقي سيتم ربطه لاحقاً ببوابة دفع مناسبة.</small>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="app.js"></script>

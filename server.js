@@ -8,7 +8,6 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
@@ -28,21 +27,6 @@ app.use('/uploads', express.static(uploadsDir));
 app.use(express.static('public')); // بيقدّم ملفات مجلد public تلقائياً (index.html, style.css, app.js)
 
 // ============================================================
-// إعداد إرسال الإيميل (nodemailer)
-// ============================================================
-const emailPort = Number(process.env.EMAIL_PORT) || 587;
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: emailPort,
-  secure: emailPort === 465, // منفذ 465 يحتاج اتصال آمن مباشر (SSL)، أما 587 فلا
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  connectionTimeout: 10000, // 10 ثواني كحد أقصى لمحاولة الاتصال
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
-});
 
 // حماية عامة: لو صار خطأ غير متوقع بأي مكان بالكود، نطبعه بس ما نخلي السيرفر ينهار بالكامل
 process.on('unhandledRejection', (err) => {
@@ -50,35 +34,10 @@ process.on('unhandledRejection', (err) => {
 });
 
 // دالة بسيطة بترسل رمز التحقق للإيميل
-async function sendVerificationEmail(toEmail, code) {
-  // Local development: if SMTP is not configured, don't crash the app.
-  // The verification code is printed in the terminal instead.
-  if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.log('========================================');
-    console.log(`DEV verification code for ${toEmail}: ${code}`);
-    console.log('========================================');
-    return;
-  }
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-    to: toEmail,
-    subject: 'رمز التحقق من حسابك',
-    html: `
-      <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
-        <h2>مرحباً بك 👋</h2>
-        <p>رمز التحقق الخاص بك هو:</p>
-        <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">${code}</div>
-        <p>هذا الرمز صالح لمدة 15 دقيقة فقط.</p>
-      </div>
-    `,
-  });
-}
+ 
 
 // دالة بتنشئ رمز عشوائي من 6 أرقام
-function generateCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
 
 function currentUserIsPremium(userId) {
   const user = db.prepare('SELECT plan, premium_until FROM users WHERE id = ?').get(userId);
@@ -131,17 +90,16 @@ app.post('/api/register', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const code = generateCode();
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 دقيقة من الآن
+    
 
     db.prepare(`
-      INSERT INTO users (name, email, password_hash, is_verified, verification_code, code_expires_at, created_at)
-      VALUES (?, ?, ?, 0, ?, ?, ?)
-    `).run(name, email, passwordHash, code, expiresAt, Date.now());
+      INSERT INTO users (name, email, password_hash, is_verified, created_at)
+VALUES (?, ?, ?, 1, ?)
+    `).run(name, email, passwordHash, Date.now());
 
-    await sendVerificationEmail(email, code);
 
-    res.json({ message: 'تم إنشاء الحساب، تحقق من إيميلك لرمز التفعيل' });
+
+res.json({ message: 'تم إنشاء الحساب بنجاح، يمكنك تسجيل الدخول الآن' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'حدث خطأ، حاول مرة أخرى' });
@@ -151,52 +109,12 @@ app.post('/api/register', async (req, res) => {
 // ============================================================
 // 2) التحقق من الرمز المرسل للإيميل
 // ============================================================
-app.post('/api/verify', (req, res) => {
-  const { email, code } = req.body;
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) {
-    return res.status(400).json({ error: 'هذا الإيميل غير مسجّل' });
-  }
-  if (user.is_verified) {
-    return res.status(400).json({ error: 'هذا الحساب مفعّل مسبقاً' });
-  }
-  if (user.verification_code !== code) {
-    return res.status(400).json({ error: 'الرمز غير صحيح' });
-  }
-  if (Date.now() > user.code_expires_at) {
-    return res.status(400).json({ error: 'انتهت صلاحية الرمز، اطلب رمز جديد' });
-  }
-
-  db.prepare('UPDATE users SET is_verified = 1, verification_code = NULL WHERE id = ?').run(user.id);
-
-  res.json({ message: 'تم تفعيل حسابك بنجاح، يمكنك تسجيل الدخول الآن' });
-});
+  
 
 // ============================================================
 // 3) إعادة إرسال رمز التحقق
 // ============================================================
-app.post('/api/resend-code', async (req, res) => {
-  const { email } = req.body;
-
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) {
-    return res.status(400).json({ error: 'هذا الإيميل غير مسجّل' });
-  }
-  if (user.is_verified) {
-    return res.status(400).json({ error: 'هذا الحساب مفعّل مسبقاً' });
-  }
-
-  const code = generateCode();
-  const expiresAt = Date.now() + 15 * 60 * 1000;
-
-  db.prepare('UPDATE users SET verification_code = ?, code_expires_at = ? WHERE id = ?')
-    .run(code, expiresAt, user.id);
-
-  await sendVerificationEmail(email, code);
-
-  res.json({ message: 'تم إرسال رمز جديد لإيميلك' });
-});
 
 // ============================================================
 // 4) تسجيل الدخول
@@ -246,7 +164,7 @@ app.get('/api/me', authMiddleware, (req, res) => {
 // لاحقاً نستبدله ببوابة دفع حقيقية.
 app.post('/api/premium/test-activate', authMiddleware, (req, res) => {
   const { code } = req.body || {};
-  const adminCode = process.env.PREMIUM_TEST_CODE || 'SILASH2026';
+  const adminCode = process.env.PREMIUM_TEST_CODE;
   if (!adminCode || code !== adminCode) {
     return res.status(403).json({ error: 'رمز التفعيل غير صحيح' });
   }
@@ -288,7 +206,7 @@ app.post('/api/upload', authMiddleware, (req, res) => {
 // 6) قائمة كل المستخدمين (عشان تختار مين تحكي معه)
 // ============================================================
 app.get('/api/users', authMiddleware, (req, res) => {
-  const users = db.prepare('SELECT id, name, email, plan, premium_until FROM users WHERE id != ? AND is_verified = 1')
+  const users = db.prepare('SELECT id, name, email, plan, premium_until FROM users WHERE id != ?')
     .all(req.userId);
   res.json({ users });
 });
